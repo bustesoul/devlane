@@ -6,7 +6,7 @@
 module.exports = {
   input: ['src/**/*.{ts,tsx}'],
   output: 'src/i18n/locales/$LOCALE/$NAMESPACE.json',
-  locales: ['en', 'az'],
+  locales: ['en', 'az', 'zh-CN'],
   defaultNamespace: 'translation',
   // Match the runtime config: flat, dotted keys.
   keySeparator: false,
