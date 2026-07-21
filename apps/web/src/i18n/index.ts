@@ -35,7 +35,6 @@ void i18n
     resources,
     fallbackLng: 'en',
     supportedLngs: SUPPORTED_LANGUAGES.map((l) => l.code),
-    nonExplicitSupportedLngs: true, // treat "en-US" etc. as "en"
     detection: {
       order: ['localStorage', 'navigator'],
       lookupLocalStorage: LANGUAGE_STORAGE_KEY,
