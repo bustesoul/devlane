@@ -32,6 +32,7 @@ type Config struct {
 
 	// MinIO
 	MinIOEndpoint        string
+	MinIOPublicURL       string
 	MinIOAccessKeyID     string
 	MinIOSecretAccessKey string
 	MinIOBucket          string
@@ -88,6 +89,7 @@ func Load() (*Config, error) {
 		RedisDB:              redisDB,
 		RabbitMQURL:          getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
 		MinIOEndpoint:        getEnv("MINIO_ENDPOINT", "localhost:9000"),
+		MinIOPublicURL:       getEnv("MINIO_PUBLIC_URL", ""),
 		MinIOAccessKeyID:     getEnv("MINIO_ACCESS_KEY_ID", "minioadmin"),
 		MinIOSecretAccessKey: getEnv("MINIO_SECRET_ACCESS_KEY", "minioadmin"),
 		MinIOBucket:          getEnv("MINIO_BUCKET", "devlane"),

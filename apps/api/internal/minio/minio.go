@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Devlaner/devlane/api/internal/config"
@@ -17,8 +18,9 @@ import (
 // Client wraps MinIO client.
 type Client struct {
 	*minio.Client
-	bucket string
-	useSSL bool
+	bucket    string
+	useSSL    bool
+	publicURL string // optional public base URL for browser URLs (presigned POST, public GET); empty = use internal endpoint
 }
 
 // New creates a MinIO client and ensures the bucket exists.
@@ -51,7 +53,12 @@ func New(cfg *config.Config, log *slog.Logger) (*Client, error) {
 		log.Info("minio connected", "endpoint", cfg.MinIOEndpoint, "bucket", cfg.MinIOBucket)
 	}
 
-	return &Client{Client: client, bucket: cfg.MinIOBucket, useSSL: cfg.MinIOUseSSL}, nil
+	// Optional public-facing URL for browser access. When set, URLs handed to
+	// the browser (presigned POST for direct upload, public GET) are rewritten
+	// to use this host instead of the internal MinIO endpoint.
+	publicURL := strings.TrimRight(strings.TrimSpace(cfg.MinIOPublicURL), "/")
+
+	return &Client{Client: client, bucket: cfg.MinIOBucket, useSSL: cfg.MinIOUseSSL, publicURL: publicURL}, nil
 }
 
 // Bucket returns the default bucket name.
@@ -97,6 +104,16 @@ func (c *Client) PresignedPostFields(ctx context.Context, objectName, contentTyp
 	if err != nil {
 		return "", nil, err
 	}
+	if c.publicURL != "" {
+		u2, perr := url.Parse(c.publicURL)
+		if perr == nil {
+			u.Scheme = u2.Scheme
+			u.Host = u2.Host
+			if u2.Path != "" {
+				u.Path = strings.TrimRight(u2.Path, "/") + u.Path
+			}
+		}
+	}
 	return u.String(), formFields, nil
 }
 
@@ -106,9 +123,13 @@ func (c *Client) DeleteObject(ctx context.Context, objectName string) error {
 }
 
 // PublicURL returns the public-facing URL for an object.
-// Falls back to the internal endpoint if no public URL is configured.
+// Uses the configured public URL when set; falls back to the internal
+// endpoint otherwise.
 func (c *Client) PublicURL(objectName string) string {
 	_ = s3utils.CheckValidObjectName(objectName) // no-op; just using the import
+	if c.publicURL != "" {
+		return c.publicURL + "/" + c.bucket + "/" + objectName
+	}
 	scheme := "http"
 	if c.useSSL {
 		scheme = "https"
