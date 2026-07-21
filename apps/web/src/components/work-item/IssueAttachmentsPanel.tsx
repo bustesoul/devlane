@@ -5,6 +5,13 @@ import { issueService } from '../../services/issueService';
 import type { IssueAttachmentApiResponse } from '../../api/types';
 import { IconPlus, IconPaperclip } from './issue-detail-icons';
 
+// Returns true when an attachment looks like a viewable image, by either the
+// file name extension or (if available) a future content-type attribute.
+function isImageAttachment(att: IssueAttachmentApiResponse): boolean {
+  const name = (att.attributes?.name ?? '').toLowerCase();
+  return /\.(jpe?g|png|webp|gif|bmp|svg)$/.test(name);
+}
+
 interface IssueAttachmentsPanelProps {
   workspaceSlug: string;
   projectId: string;
@@ -95,46 +102,78 @@ export function IssueAttachmentsPanel({
             {t('workItem.attachments.empty', 'No attachments yet.')}
           </p>
         ) : (
-          attachments.map((att) => (
-            <div key={att.id} className="flex items-center gap-1 group">
-              <a
-                href={att.asset_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="min-w-0 flex-1 truncate text-xs text-(--txt-accent-primary) hover:underline"
-                title={att.attributes?.name}
-              >
-                {att.attributes?.name ?? t('workItem.attachments.fallbackName', 'Attachment')}
-              </a>
-              {att.attributes?.size != null && (
-                <span className="shrink-0 text-[10px] text-(--txt-tertiary)">
-                  {}
-                  {(att.attributes.size / 1024).toFixed(0)}KB
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!workspaceSlug) return;
-                  try {
-                    await issueService.deleteAttachment(
-                      workspaceSlug,
-                      projectId,
-                      issueId,
-                      att.asset_id,
-                    );
-                    onAttachmentsChange((prev) => prev.filter((x) => x.id !== att.id));
-                  } catch {
-                    /* ignore */
-                  }
-                }}
-                className="shrink-0 opacity-0 group-hover:opacity-100 rounded p-0.5 text-(--txt-tertiary) hover:text-(--txt-danger-primary)"
-                title={t('common.delete', 'Delete')}
-              >
-                ×
-              </button>
-            </div>
-          ))
+          attachments.map((att) => {
+            const isImage = isImageAttachment(att);
+            return (
+              <div key={att.id} className="group">
+                {isImage ? (
+                  <a
+                    href={att.asset_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block overflow-hidden rounded border border-(--border-subtle) hover:border-(--txt-accent-primary)"
+                    title={att.attributes?.name}
+                  >
+                    <img
+                      src={att.asset_url}
+                      alt={att.attributes?.name ?? ''}
+                      loading="lazy"
+                      className="h-24 w-full bg-(--bg-layer-2) object-contain"
+                    />
+                    <div className="flex items-center justify-between gap-1 px-1.5 py-1">
+                      <span className="min-w-0 flex-1 truncate text-[10px] text-(--txt-secondary)">
+                        {att.attributes?.name ??
+                          t('workItem.attachments.fallbackName', 'Attachment')}
+                      </span>
+                      {att.attributes?.size != null && (
+                        <span className="shrink-0 text-[10px] text-(--txt-tertiary)">
+                          {(att.attributes.size / 1024).toFixed(0)}KB
+                        </span>
+                      )}
+                    </div>
+                  </a>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <a
+                      href={att.asset_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-w-0 flex-1 truncate text-xs text-(--txt-accent-primary) hover:underline"
+                      title={att.attributes?.name}
+                    >
+                      {att.attributes?.name ?? t('workItem.attachments.fallbackName', 'Attachment')}
+                    </a>
+                    {att.attributes?.size != null && (
+                      <span className="shrink-0 text-[10px] text-(--txt-tertiary)">
+                        {(att.attributes.size / 1024).toFixed(0)}KB
+                      </span>
+                    )}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!workspaceSlug) return;
+                    try {
+                      await issueService.deleteAttachment(
+                        workspaceSlug,
+                        projectId,
+                        issueId,
+                        att.asset_id,
+                      );
+                      onAttachmentsChange((prev) => prev.filter((x) => x.id !== att.id));
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  className="mt-0.5 shrink-0 opacity-0 group-hover:opacity-100 rounded p-0.5 text-[10px] text-(--txt-tertiary) hover:text-(--txt-danger-primary)"
+                  title={t('common.delete', 'Delete')}
+                >
+                  {t('common.delete', 'Delete')}
+                </button>
+              </div>
+            );
+          })
         )}
       </CardContent>
     </Card>

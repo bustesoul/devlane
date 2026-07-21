@@ -613,6 +613,14 @@ export function IssueDetailPage() {
                   'Add a description… (type / for commands)',
                 )}
                 mentionMembers={mentionMembers}
+                workspaceSlug={workspaceSlug ?? undefined}
+                projectId={project.id}
+                issueId={issue.id}
+                onAttachmentUploaded={(att) =>
+                  setAttachments((prev) =>
+                    prev.some((p) => p.id === att.id) ? prev : [att, ...prev],
+                  )
+                }
               />
               {workspaceSlug && projectId && issueId && (
                 <div className="mt-3">
@@ -758,6 +766,14 @@ export function IssueDetailPage() {
                                 showShortcutHint
                                 autoFocus
                                 mentionMembers={mentionMembers}
+                                workspaceSlug={workspaceSlug ?? undefined}
+                                projectId={project.id}
+                                issueId={issue.id}
+                                onAttachmentUploaded={(att) =>
+                                  setAttachments((prev) =>
+                                    prev.some((p) => p.id === att.id) ? prev : [att, ...prev],
+                                  )
+                                }
                               />
                             </div>
                           ) : (
@@ -789,6 +805,14 @@ export function IssueDetailPage() {
                 showShortcutHint
                 showAccessToggle
                 mentionMembers={mentionMembers}
+                workspaceSlug={workspaceSlug ?? undefined}
+                projectId={project.id}
+                issueId={issue.id}
+                onAttachmentUploaded={(att) =>
+                  setAttachments((prev) =>
+                    prev.some((p) => p.id === att.id) ? prev : [att, ...prev],
+                  )
+                }
               />
             </CardContent>
           </Card>

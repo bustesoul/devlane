@@ -19,8 +19,12 @@ import {
   Globe,
   Lock,
   ArrowUp,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { createMentionExtension, type MentionMember } from './editorMention';
+import Image from '@tiptap/extension-image';
+import { issueService } from '../../services/issueService';
+import type { IssueAttachmentApiResponse } from '../../api/types';
 
 export interface CommentEditorProps {
   /**
@@ -47,6 +51,15 @@ export interface CommentEditorProps {
   initialAccess?: 'INTERNAL' | 'EXTERNAL';
   /** Label for the primary submit button. Defaults to "Send". */
   submitLabel?: string;
+  /** When set, enables "insert image" in the toolbar. The image is uploaded
+   *  as an issue attachment (not embedded in the comment), then an <img>
+   *  referencing it is inserted at the cursor. Requires all three ids. */
+  workspaceSlug?: string;
+  projectId?: string;
+  issueId?: string;
+  /** Fired after an image attachment is created via the toolbar, so the
+   *  parent can refresh its attachment list. */
+  onAttachmentUploaded?: (attachment: IssueAttachmentApiResponse) => void;
 }
 
 export function CommentEditor({
@@ -61,10 +74,62 @@ export function CommentEditor({
   initialAccess = 'INTERNAL',
   mentionMembers,
   submitLabel,
+  workspaceSlug,
+  projectId,
+  issueId,
+  onAttachmentUploaded,
 }: CommentEditorProps) {
   const { t } = useTranslation();
   const [access, setAccess] = useState<'INTERNAL' | 'EXTERNAL'>(initialAccess);
   const [isEmpty, setIsEmpty] = useState(() => normalize(initialHtml) === '');
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const editorRef = useRef<Editor | null>(null);
+
+  const canUploadImage = Boolean(workspaceSlug && projectId && issueId);
+
+  const handleImageUpload = useCallback(
+    async (file: File) => {
+      if (!workspaceSlug || !projectId || !issueId) return;
+      if (!/^image\/(jpeg|jpg|png|webp|gif)$/.test(file.type)) {
+        alert('Only image files (JPEG, PNG, WebP, GIF) are supported in comments.');
+        return;
+      }
+      setUploadingImage(true);
+      try {
+        const resp = await issueService.initiateAttachmentUpload(
+          workspaceSlug,
+          projectId,
+          issueId,
+          { name: file.name, size: file.size, type: file.type },
+        );
+        const formData = new FormData();
+        Object.entries(resp.upload_data.fields ?? {}).forEach(([k, v]) => formData.append(k, v));
+        formData.append('file', file);
+        const uploadResp = await fetch(resp.upload_data.url, {
+          method: 'POST',
+          body: formData,
+          credentials: 'omit',
+        });
+        if (!uploadResp.ok) throw new Error(`Upload failed: ${uploadResp.status}`);
+        await issueService.confirmAttachmentUpload(
+          workspaceSlug,
+          projectId,
+          issueId,
+          resp.asset_id,
+        );
+        // Insert <img> at cursor referencing the attachment
+        const ed = editorRef.current;
+        ed?.chain().focus().setImage({ src: resp.attachment.asset_url, alt: file.name }).run();
+        onAttachmentUploaded?.(resp.attachment);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Image upload failed');
+      } finally {
+        setUploadingImage(false);
+      }
+    },
+    [workspaceSlug, projectId, issueId, onAttachmentUploaded],
+  );
   const membersRef = useRef<MentionMember[]>(mentionMembers ?? []);
   useEffect(() => {
     membersRef.current = mentionMembers ?? [];
@@ -72,7 +137,6 @@ export function CommentEditor({
   // The getter is only called inside TipTap's suggestion lifecycle (event-driven,
   // not during render). The lint rule below can't see that, so we silence it.
   const getMembers = useCallback(() => membersRef.current, []);
-  // eslint-disable-next-line react-hooks/refs -- ref read happens inside async editor callbacks
   const mentionExt = useMemo(() => createMentionExtension(getMembers), [getMembers]);
   const editor = useEditor({
     extensions: [
@@ -87,6 +151,7 @@ export function CommentEditor({
       Placeholder.configure({
         placeholder: placeholder ?? t('workItem.comment.placeholder', 'Add comment'),
       }),
+      Image.configure({ inline: false, allowBase64: false }),
       mentionExt,
     ],
     content: initialHtml || '',
@@ -96,6 +161,12 @@ export function CommentEditor({
       setIsEmpty(html === '<p></p>' || html === '');
     },
   });
+
+  // Keep a ref to the editor so async handlers (image upload) can reach the
+  // current instance without re-creating the callback on every editor change.
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   // Reseed only when the incoming HTML genuinely differs from what's shown, so a
   // comment-list refetch landing mid-edit doesn't wipe the draft or jump the
@@ -262,6 +333,38 @@ export function CommentEditor({
         >
           <Code2 className="h-3.5 w-3.5" />
         </ToolbarButton>
+
+        {canUploadImage && (
+          <>
+            <ToolbarButton
+              editor={editor}
+              onClick={() => fileInputRef.current?.click()}
+              isActive={false}
+              label={t('workItem.editor.insertImage', 'Insert image')}
+            >
+              <ImageIcon className="h-3.5 w-3.5" />
+            </ToolbarButton>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="sr-only"
+              disabled={uploadingImage}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  void handleImageUpload(file);
+                }
+                e.target.value = '';
+              }}
+            />
+            {uploadingImage && (
+              <span className="text-[11px] text-(--txt-tertiary)">
+                {t('workItem.editor.uploading', 'Uploading…')}
+              </span>
+            )}
+          </>
+        )}
 
         <div className="ml-auto flex items-center gap-2 pl-2">
           {showShortcutHint && (

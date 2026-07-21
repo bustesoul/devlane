@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { EditorContent, useEditor } from '@tiptap/react';
+import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
+import Image from '@tiptap/extension-image';
 import { createMentionExtension, type MentionMember } from './editorMention';
 import { createSlashCommands } from './editorSlashCommands';
+import { issueService } from '../../services/issueService';
+import type { IssueAttachmentApiResponse } from '../../api/types';
 
 const SAVE_DEBOUNCE_MS = 1500;
 
@@ -26,6 +29,13 @@ export interface DescriptionEditorProps {
   disabled?: boolean;
   /** Members available for @-mention. */
   mentionMembers?: MentionMember[];
+  /** When set, enables "insert image" in the toolbar. The image is uploaded
+   *  as an issue attachment, then an <img> referencing it is inserted. */
+  workspaceSlug?: string;
+  projectId?: string;
+  issueId?: string;
+  /** Fired after an image attachment is created via the toolbar. */
+  onAttachmentUploaded?: (attachment: IssueAttachmentApiResponse) => void;
 }
 
 /**
@@ -41,6 +51,10 @@ export function DescriptionEditor({
   placeholder,
   disabled = false,
   mentionMembers,
+  workspaceSlug,
+  projectId,
+  issueId,
+  onAttachmentUploaded,
 }: DescriptionEditorProps) {
   const { t } = useTranslation();
   const membersRef = useRef<MentionMember[]>(mentionMembers ?? []);
@@ -51,6 +65,53 @@ export function DescriptionEditor({
   // not during render). The lint rule below can't see that, so we silence it.
   const getMembers = useCallback(() => membersRef.current, []);
   const [saveState, setSaveState] = useState<SaveState>('idle');
+  const editorRef = useRef<Editor | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const canUploadImage = Boolean(workspaceSlug && projectId && issueId);
+
+  const handleImageUpload = useCallback(
+    async (file: File) => {
+      if (!workspaceSlug || !projectId || !issueId) return;
+      if (!/^image\/(jpeg|jpg|png|webp|gif)$/.test(file.type)) {
+        alert('Only image files (JPEG, PNG, WebP, GIF) are supported.');
+        return;
+      }
+      setUploadingImage(true);
+      try {
+        const resp = await issueService.initiateAttachmentUpload(
+          workspaceSlug,
+          projectId,
+          issueId,
+          { name: file.name, size: file.size, type: file.type },
+        );
+        const formData = new FormData();
+        Object.entries(resp.upload_data.fields ?? {}).forEach(([k, v]) => formData.append(k, v));
+        formData.append('file', file);
+        const uploadResp = await fetch(resp.upload_data.url, {
+          method: 'POST',
+          body: formData,
+          credentials: 'omit',
+        });
+        if (!uploadResp.ok) throw new Error(`Upload failed: ${uploadResp.status}`);
+        await issueService.confirmAttachmentUpload(
+          workspaceSlug,
+          projectId,
+          issueId,
+          resp.asset_id,
+        );
+        const ed = editorRef.current;
+        ed?.chain().focus().setImage({ src: resp.attachment.asset_url, alt: file.name }).run();
+        onAttachmentUploaded?.(resp.attachment);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Image upload failed');
+      } finally {
+        setUploadingImage(false);
+      }
+    },
+    [workspaceSlug, projectId, issueId, onAttachmentUploaded],
+  );
   const lastSavedRef = useRef(normalize(initialHtml));
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -83,6 +144,7 @@ export function DescriptionEditor({
       Placeholder.configure({
         placeholder: placeholder ?? t('workItem.description.placeholder', 'Add a description…'),
       }),
+      Image.configure({ inline: false, allowBase64: false }),
       mentionExt,
       slashExt,
     ],
@@ -101,6 +163,12 @@ export function DescriptionEditor({
       void flushSave(e.getHTML());
     },
   });
+
+  // Keep a ref to the editor so async handlers (image upload) can reach the
+  // current instance without re-creating the callback on every editor change.
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   // Sync external changes (e.g. parent refetches description from the API).
   useEffect(() => {
@@ -191,6 +259,32 @@ export function DescriptionEditor({
         >
           <span className="text-xs">{'</>'}</span>
         </button>
+        {canUploadImage && (
+          <button
+            type="button"
+            className={buttonBase}
+            onClick={() => fileInputRef.current?.click()}
+            aria-label={t('workItem.editor.insertImage', 'Insert image')}
+            disabled={disabled || uploadingImage}
+            title={t('workItem.editor.insertImage', 'Insert image')}
+          >
+            <span className="text-xs">🖼</span>
+          </button>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="sr-only"
+          disabled={disabled || uploadingImage}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              void handleImageUpload(file);
+            }
+            e.target.value = '';
+          }}
+        />
         <div className="ml-auto text-[11px] text-(--txt-tertiary)">
           {saveState === 'saving' && t('workItem.description.saving', 'Saving…')}
           {saveState === 'saved' && t('workItem.description.saved', 'Saved')}
