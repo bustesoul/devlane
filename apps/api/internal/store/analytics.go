@@ -214,7 +214,7 @@ func (s *AnalyticsStore) GetWorkspaceTrendAnalytics(ctx context.Context, slug st
               AND issues.deleted_at IS NULL 
               AND workspaces.deleted_at IS NULL 
               AND projects.deleted_at IS NULL
-              AND issue_activities.field = 'state_id'
+              AND issue_activities.field = 'state'
               AND states.group IN ('completed', 'cancelled')
         )
         SELECT date, SUM(created) AS created, SUM(resolved) AS resolved
@@ -244,7 +244,7 @@ func (s *AnalyticsStore) GetProjectTrendAnalytics(ctx context.Context, projectID
             JOIN states ON states.id::text = issue_activities.new_value
             WHERE issues.project_id = ? 
               AND issues.deleted_at IS NULL
-              AND issue_activities.field = 'state_id'
+              AND issue_activities.field = 'state'
               AND states.group IN ('completed', 'cancelled')
         )
         SELECT date, SUM(created) AS created, SUM(resolved) AS resolved
