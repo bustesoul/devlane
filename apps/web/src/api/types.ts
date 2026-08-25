@@ -248,6 +248,7 @@ export interface IssueAttachmentApiResponse {
   issue_id: string;
   attributes: { name?: string; size?: number };
   asset_url: string;
+  thumbnail_url?: string;
   updated_at: string;
   updated_by: string;
   created_by: string;

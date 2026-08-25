@@ -118,14 +118,16 @@ func isServableObjectPath(path string) bool {
 }
 
 // parseAttachmentPath extracts the issue and asset ids from an object path of the
-// form "attachments/<issueID>/<assetID>".
+// form "attachments/<issueID>/<assetID>" or "attachments/<issueID>/<assetID>-thumb"
+// (the generated preview thumbnail). The -thumb suffix is stripped before parsing
+// so authorization checks the base asset the thumbnail was derived from.
 func parseAttachmentPath(path string) (issueID, assetID uuid.UUID, ok bool) {
 	parts := strings.Split(path, "/")
 	if len(parts) != 3 || parts[0] != "attachments" {
 		return uuid.Nil, uuid.Nil, false
 	}
 	iid, err1 := uuid.Parse(parts[1])
-	aid, err2 := uuid.Parse(parts[2])
+	aid, err2 := uuid.Parse(strings.TrimSuffix(parts[2], "-thumb"))
 	if err1 != nil || err2 != nil {
 		return uuid.Nil, uuid.Nil, false
 	}

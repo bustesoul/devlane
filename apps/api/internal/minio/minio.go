@@ -77,6 +77,23 @@ func (c *Client) GetObject(ctx context.Context, objectName string) (*minio.Objec
 	return c.Client.GetObject(ctx, c.bucket, objectName, minio.GetObjectOptions{})
 }
 
+// ContentType returns the stored content type for an object, or "" with an
+// error if the object is missing or the stat fails.
+func (c *Client) ContentType(ctx context.Context, objectName string) (string, error) {
+	info, err := c.Client.StatObject(ctx, c.bucket, objectName, minio.StatObjectOptions{})
+	if err != nil {
+		return "", err
+	}
+	return info.ContentType, nil
+}
+
+// Exists reports whether an object exists in the bucket. Any stat error
+// (including "not found") is treated as "does not exist".
+func (c *Client) Exists(ctx context.Context, objectName string) bool {
+	_, err := c.Client.StatObject(ctx, c.bucket, objectName, minio.StatObjectOptions{})
+	return err == nil
+}
+
 // PresignedPostFields generates S3-compatible presigned POST policy fields for direct browser upload.
 // Returns the upload URL and form fields to include in the multipart POST.
 func (c *Client) PresignedPostFields(ctx context.Context, objectName, contentType string, maxSize int64, expiry time.Duration) (uploadURL string, fields map[string]string, err error) {

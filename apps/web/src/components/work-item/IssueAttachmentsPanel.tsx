@@ -115,7 +115,7 @@ export function IssueAttachmentsPanel({
                     title={att.attributes?.name}
                   >
                     <img
-                      src={att.asset_url}
+                      src={att.thumbnail_url || att.asset_url}
                       alt={att.attributes?.name ?? ''}
                       loading="lazy"
                       className="h-24 w-full bg-(--bg-layer-2) object-contain"

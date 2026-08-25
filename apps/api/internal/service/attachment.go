@@ -17,14 +17,15 @@ var ErrAttachmentNotFound = errors.New("attachment not found")
 
 // AttachmentResponse is what the frontend expects for TIssueAttachment.
 type AttachmentResponse struct {
-	ID         uuid.UUID              `json:"id"`
-	AssetID    uuid.UUID              `json:"asset_id"`
-	Attributes map[string]interface{} `json:"attributes"`
-	AssetURL   string                 `json:"asset_url"`
-	IssueID    uuid.UUID              `json:"issue_id"`
-	UpdatedAt  time.Time              `json:"updated_at"`
-	UpdatedBy  string                 `json:"updated_by"`
-	CreatedBy  string                 `json:"created_by"`
+	ID           uuid.UUID              `json:"id"`
+	AssetID      uuid.UUID              `json:"asset_id"`
+	Attributes   map[string]interface{} `json:"attributes"`
+	AssetURL     string                 `json:"asset_url"`
+	ThumbnailURL string                 `json:"thumbnail_url,omitempty"`
+	IssueID      uuid.UUID              `json:"issue_id"`
+	UpdatedAt    time.Time              `json:"updated_at"`
+	UpdatedBy    string                 `json:"updated_by"`
+	CreatedBy    string                 `json:"created_by"`
 }
 
 // PresignedUploadResponse matches TIssueAttachmentUploadResponse.
@@ -207,6 +208,10 @@ func (s *AttachmentService) ConfirmUpload(ctx context.Context, workspaceSlug str
 	if err := s.is.MarkFileAssetUploaded(ctx, assetID, asset.Asset); err != nil {
 		return err
 	}
+	// Best-effort thumbnail generation. A failure here (non-image, decode error,
+	// storage hiccup) MUST NOT fail the upload — the user keeps the original and
+	// the UI simply falls back to the full-size URL.
+	_ = GenerateThumbnail(ctx, s.minio, asset.Asset)
 	if issue, err := s.is.GetByID(ctx, issueID); err == nil {
 		recordIssueActivity(ctx, s.activity, issue, userID, "attachment_added", "", assetName(asset))
 	}
@@ -236,15 +241,17 @@ func (s *AttachmentService) ListAttachments(ctx context.Context, workspaceSlug s
 		if att.CreatedByID != nil {
 			createdBy = att.CreatedByID.String()
 		}
+		assetURL := "/api/files/" + asset.Asset
 		result = append(result, AttachmentResponse{
-			ID:         att.ID,
-			AssetID:    att.AssetID,
-			Attributes: map[string]interface{}{"name": asset.Attributes["name"], "size": asset.Size},
-			AssetURL:   "/api/files/" + asset.Asset,
-			IssueID:    issueID,
-			UpdatedAt:  att.UpdatedAt,
-			UpdatedBy:  createdBy,
-			CreatedBy:  createdBy,
+			ID:           att.ID,
+			AssetID:      att.AssetID,
+			Attributes:   map[string]interface{}{"name": asset.Attributes["name"], "size": asset.Size},
+			AssetURL:     assetURL,
+			ThumbnailURL: thumbnailURLFor(ctx, s.minio, assetURL, asset.Asset),
+			IssueID:      issueID,
+			UpdatedAt:    att.UpdatedAt,
+			UpdatedBy:    createdBy,
+			CreatedBy:    createdBy,
 		})
 	}
 	return result, nil
@@ -273,6 +280,10 @@ func (s *AttachmentService) DeleteAttachment(ctx context.Context, workspaceSlug 
 	}
 	if s.minio != nil && asset.IsUploaded && asset.Asset != "" {
 		_ = s.minio.DeleteObject(ctx, asset.Asset)
+		// Best-effort: also remove the generated thumbnail if one exists.
+		// Missing thumbnail (non-image attachments, or never generated) is fine —
+		// DeleteObject on a non-existent key is a no-op in S3/MinIO.
+		_ = s.minio.DeleteObject(ctx, asset.Asset+thumbSuffix)
 	}
 	if issue, err := s.is.GetByID(ctx, issueID); err == nil {
 		recordIssueActivity(ctx, s.activity, issue, userID, "attachment_removed", assetName(asset), "")

@@ -16,6 +16,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 	github.com/xuri/excelize/v2 v2.11.0
 	golang.org/x/crypto v0.53.0
+	golang.org/x/image v0.38.0
 	golang.org/x/net v0.56.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
