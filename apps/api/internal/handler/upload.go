@@ -191,12 +191,25 @@ func (h *UploadHandler) ServeFile(c *gin.Context) {
 	c.Header("X-Content-Type-Options", "nosniff")
 	// Attachments are arbitrary user files with an unvalidated content-type, so
 	// force a download instead of rendering them inline: an uploaded .html or
-	// SVG would otherwise execute on the API origin when opened. The uploads/
-	// prefix (avatars, covers, logos) is validated as images and stays inline.
+	// SVG would otherwise execute on the API origin when opened. Raster image
+	// types are safe to render and stay inline so the attachment preview and
+	// click-to-view workflow keeps working; SVG is deliberately excluded. The
+	// uploads/ prefix (avatars, covers, logos) is validated as images and stays
+	// inline.
 	disposition := "inline"
-	if strings.HasPrefix(path, "attachments/") {
+	if strings.HasPrefix(path, "attachments/") && !isInlineImageContentType(info.ContentType) {
 		disposition = "attachment"
 	}
 	c.Header("Content-Disposition", disposition)
 	c.DataFromReader(http.StatusOK, info.Size, info.ContentType, obj, nil)
+}
+
+// isInlineImageContentType reports whether a stored content type is a raster
+// image format that cannot execute script when rendered by the browser.
+func isInlineImageContentType(ct string) bool {
+	switch strings.ToLower(strings.TrimSpace(strings.Split(ct, ";")[0])) {
+	case "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp":
+		return true
+	}
+	return false
 }
