@@ -165,7 +165,9 @@ func (h *UploadHandler) ServeFile(c *gin.Context) {
 			return
 		}
 		if err := h.Attachments.AuthorizeDownload(c.Request.Context(), issueID, assetID, user.ID); err != nil {
-			if errors.Is(err, service.ErrAttachmentNotFound) || errors.Is(err, service.ErrProjectForbidden) {
+			// ErrProjectNotFound comes from enforceProjectVisibility for private
+			// projects; map it to 404 like the other "hidden" errors.
+			if errors.Is(err, service.ErrAttachmentNotFound) || errors.Is(err, service.ErrProjectForbidden) || errors.Is(err, service.ErrProjectNotFound) {
 				c.Status(http.StatusNotFound)
 			} else {
 				c.Status(http.StatusInternalServerError)
